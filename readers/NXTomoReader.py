@@ -115,7 +115,7 @@ class NXTomoReader(object):
             raise KeyError(ke.args[0], self.data_path)
         return self.load(dimensions, 0)
 
-    def load_flat(self, dimensions=None):
+    def load_flat_field(self, dimensions=None):
         '''
         Loads the flat field data from the nexus file.
         dimensions: a tuple of 'slice's
@@ -130,7 +130,7 @@ class NXTomoReader(object):
             raise KeyError(ke.args[0], self.data_path)
         return self.load(dimensions, 1)
 
-    def load_dark(self, dimensions=None):
+    def load_dark_field(self, dimensions=None):
         '''
         Loads the Dark field data from the nexus file.
         dimensions: a tuple of 'slice's
