@@ -30,6 +30,8 @@ If you would like to include any images in your demonstration please add them to
 
 All contributed files should have the [Apache 2.0 License Header](https://github.com/TomographicImaging/CIL/blob/ab4d56e470eac32959e20fe36ba1bcc6a3eb5361/Wrappers/Python/cil/io/NEXUSDataReader.py#L4-L15) at the top, plus the name of the authors.
 
+Please read and adhere to the [developer guide](https://tomographicimaging.github.io/CIL/nightly/developer_guide/) and local patterns and conventions.
+
 Please also:
     Add a description of your contribution(s) to the top of your file(s)
     Add a link to the publicly available dataset used near the top of the file(s)
