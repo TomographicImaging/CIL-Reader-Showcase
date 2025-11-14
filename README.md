@@ -1,5 +1,5 @@
 # CIL-Reader-Showcase
-A library of jupyter notebooks to showcase reading open-source CT datasets of a variety of formats. These notebooks have been contributed by users of the Core Imaging Library.
+A library of jupyter notebooks to showcase reading open-source CT datasets of a variety of formats. These notebooks have been contributed by users of the [Core Imaging Library](https://github.com/TomographicImaging/CIL).
 
 ## Contribution Guidelines
 
