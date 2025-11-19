@@ -15,76 +15,38 @@
 #  limitations under the License.
 #
 # Authors:
-# Evan Kiely (WMG)
+# Evan Kiely (Warwick Manufacturing Group, University of Warwick)
+# Ford Collins (Warwick Manufacturing Group, University of Warwick)
+# Nishitha Ravichandran (Warwick Manufacturing Group, University of Warwick)
+# Jay Warnett (Warwick Manufacturing Group, University of Warwick)
+# Evelien Zwanenburg (Warwick Manufacturing Group, University of Warwick)
 
 from cil.framework import AcquisitionData, AcquisitionGeometry
 from readers.WMG_Modified_TIFF_io import TIFFStackReader
+from cil.processors import  Normaliser
 import warnings
 import numpy as np
 import os
-    
+from PIL import Image
+import glob     
         
 class TescanDataReader(object):
     
-    def __init__(self, 
-                 **kwargs):
-        '''Basic reader for xtekct files
-        
-        Parameters
-        ----------
+    def __init__(self, file_name = None, roi= None,
+               normalise=True, mode='bin', fliplr=False):
 
-            
-        file_name: str with full path to .xtekct file
-            
-        roi: dictionary with roi to load 
-                {'angle': (start, end, step), 
-                 'horizontal': (start, end, step), 
-                 'vertical': (start, end, step)}
-                Files are stacked along axis_0. axis_1 and axis_2 correspond
-                to row and column dimensions, respectively.
-                Files are stacked in alphabetic order. 
-                To skip projections or to change number of projections to load, 
-                adjust 'angle'. For instance, 'angle': (100, 300)
-                will skip first 100 projections and will load 200 projections.
-                'angle': -1 is a shortcut to load all elements along axis.
-                Start and end can be specified as None which is equivalent 
-                to start = 0 and end = load everything to the end, respectively.
-                Start and end also can be negative.
-            
-        normalise: bool, normalises loaded projections by detector 
-                white level (I_0). Default value is True
-                            
-        fliplr: bool, default = False, flip projections in the left-right direction
-                (about vertical axis)
-                            
-        mode: str, 'bin' (default) or 'slice'. In bin mode, 'step' number
-                of pixels is binned together, values of resulting binned
-                pixels are calculated as average. 
-                In 'slice' mode 'step' defines standard numpy slicing.
-                Note: in general 
-                output array size in bin mode != output array size in slice mode
-        
-        Output
-        ------
-        
-        Acquisition data with corresponding geometry, arranged as ['angle', horizontal'] 
-        if a single slice is loaded and ['vertical, 'angle', horizontal'] 
-        if more than 1 slices are loaded.
-                    
-        '''
-        
-        self.file_name = kwargs.get('file_name', None)
-        self.roi = kwargs.get('roi', {'angle': -1, 'horizontal': -1, 'vertical': -1})
-        self.normalise = kwargs.get('normalise', True)
-        self.mode = kwargs.get('mode', 'bin')
-        self.fliplr = kwargs.get('fliplr', False)
-        
-        if self.file_name is not None:
-            self.set_up(file_name = self.file_name,
-                        roi = self.roi,
-                        normalise = self.normalise,
-                        mode = self.mode,
-                        fliplr = self.fliplr)
+      self.file_name = file_name
+      self.roi = roi
+      self.normalise = normalise
+      self.mode = mode
+      self.fliplr = fliplr
+
+      if file_name is not None:
+          self.set_up(file_name = file_name,
+                      roi = roi,
+                      normalise = normalise,
+                      mode = mode,
+                      fliplr = fliplr)
             
     def set_up(self, 
                file_name = None, 
@@ -109,7 +71,10 @@ class TescanDataReader(object):
         # check if data file exists
         if not(os.path.isfile(self.file_name)):
             raise Exception('File\n {}\n does not exist.'.format(self.file_name))
-                
+        
+        if self.roi is None:
+           self.roi= {'angle': -1, 'horizontal': -1, 'vertical': -1}
+           
         # check labels     
         for key in self.roi.keys():
             if key not in ['angle', 'horizontal', 'vertical']:
@@ -228,6 +193,7 @@ class TescanDataReader(object):
             origin = 'top-right'
         else:
             origin = 'top-left'
+            
 
         if pixel_num_v == 1 and (self._roi_par[1][0]+self._roi_par[1][1]) // 2 == pixel_num_v_0 // 2:
             self._ag = AcquisitionGeometry.create_Cone2D(source_position=[0, -source_to_origin],
@@ -271,7 +237,21 @@ class TescanDataReader(object):
             # print (i, el)
             roidict['axis_{}'.format(i)] = tuple(el)
         return roidict
-
+    
+    def load_darkfield(self):
+        di_path=glob.glob(os.path.join(self.tiff_directory_path,"di*"))[0]
+        di = np.asarray(Image.open(di_path)).astype(np.float32)
+        roi = self.get_roi()
+        
+        return di[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
+        
+    def load_flatfield(self):  
+        io_path=glob.glob(os.path.join(self.tiff_directory_path,"io*"))[0]
+        io = np.asarray(Image.open(io_path)).astype(np.float32)
+        roi = self.get_roi()
+       
+        return io[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
+    
     def read(self):
         
         '''
@@ -289,9 +269,15 @@ class TescanDataReader(object):
               
         if (self.normalise):
             ad.array[ad.array < 1] = 1
-            # cast the data read to float32
-            ad = ad / np.float32(float(1))
+            di = self.load_darkfield()
+            io = self.load_flatfield()
             
+            ad = Normaliser(flat_field=io,
+                    dark_field=di
+                    )(ad)
+            
+            
+            # cast the data read to float32
         
         if self.fliplr:
             dim = ad.get_dimension_axis('horizontal')
