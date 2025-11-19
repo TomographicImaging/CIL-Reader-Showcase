@@ -270,7 +270,7 @@ class TIFFStackReader(object):
             self.set_up(file_name = self.file_name,
                         roi = roi,
                         transpose = transpose,
-                        proj_name = self.proj_name,
+                        proj_name = proj_name,
                         mode = mode, dtype=dtype)
             
     def set_up(self, 
@@ -327,6 +327,9 @@ class TIFFStackReader(object):
         
         if self.roi is None:
             self.roi = {'axis_0': -1, 'axis_1': -1, 'axis_2': -1}
+
+        if proj_name is None:
+            proj_name = ''
             
         # check that PIL library is installed
         if (pilAvailable == False):
