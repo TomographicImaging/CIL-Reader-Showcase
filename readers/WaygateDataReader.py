@@ -15,7 +15,11 @@
 #  limitations under the License.
 #
 # Authors:
-# Evan Kiely (WMG)
+# Evan Kiely (Warwick Manufacturing Group, University of Warwick)
+# Ford Collins (Warwick Manufacturing Group, University of Warwick)
+# Nishitha Ravichandran (Warwick Manufacturing Group, University of Warwick)
+# Jay Warnett (Warwick Manufacturing Group, University of Warwick)
+# Evelien Zwanenburg (Warwick Manufacturing Group, University of Warwick)
 
 from cil.framework import AcquisitionData, AcquisitionGeometry
 from readers.WMG_Modified_TIFF_io import TIFFStackReader
@@ -26,8 +30,7 @@ import os
         
 class WaygateDataReader(object):
     
-    def __init__(self, 
-                 **kwargs):
+    def __init__(self, file_name = None, roi = None, normalise=True, mode='bin', fliplr=False):
         '''Basic reader for xtekct files
         
         Parameters
@@ -73,11 +76,11 @@ class WaygateDataReader(object):
                     
         '''
         
-        self.file_name = kwargs.get('file_name', None)
-        self.roi = kwargs.get('roi', {'angle': -1, 'horizontal': -1, 'vertical': -1})
-        self.normalise = kwargs.get('normalise', True)
-        self.mode = kwargs.get('mode', 'bin')
-        self.fliplr = kwargs.get('fliplr', False)
+        self.file_name = file_name
+        self.roi = roi
+        self.normalise = normalise
+        self.mode = mode
+        self.fliplr = fliplr
         
         if self.file_name is not None:
             self.set_up(file_name = self.file_name,
@@ -88,13 +91,16 @@ class WaygateDataReader(object):
             
     def set_up(self, 
                file_name = None, 
-               roi = {'angle': -1, 'horizontal': -1, 'vertical': -1},
+               roi = None,
                normalise = True,
                mode = 'bin',
                fliplr = False):
         
         self.file_name = file_name
+        
         self.roi = roi
+        if self.roi is None:
+            self.roi= {'angle': -1, 'horizontal': -1, 'vertical': -1}
         self.normalise = normalise
         self.mode = mode
         self.fliplr = fliplr
