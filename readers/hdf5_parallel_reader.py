@@ -196,7 +196,8 @@ class HDF5_ParallelDataReader(object):
     
 
     
-    def configure_pixel_sizes(self, pixel_size_x_path, pixel_size_y_path, 
+    def configure_pixel_sizes(self, pixel_size_x_path=None, pixel_size_y_path=None, 
+                         pixel_size_x=None, pixel_size_y=None,
                          HDF5_units=None):
         '''
         Parameters
@@ -206,6 +207,12 @@ class HDF5_ParallelDataReader(object):
 
         pixel_size_y_path: string
             Path to the y pixel size within the HDF5 file
+            
+        pixel_size_x: float
+            Alternatively provide the x pixel size as a float
+            
+        pixel_size_y: float
+            Alternatively provide the y pixel size as a float
         
         HDF5_units: string (optional)
             The pixel size distance units in the HDF5 file, must be one of 'm',
@@ -229,7 +236,8 @@ class HDF5_ParallelDataReader(object):
                                 
             self._metadata['pixel_size_x'] = multiplier*HDF5_utilities.read(self._file_name, 
                                                                pixel_size_x_path)
-        
+        elif pixel_size_x is not None:
+            self._metadata['pixel_size_x'] = pixel_size_x # TODO: is a multiplier needed here?
         
         if pixel_size_y_path is not None:
 
@@ -248,6 +256,8 @@ class HDF5_ParallelDataReader(object):
                                 
             self._metadata['pixel_size_y'] = multiplier*HDF5_utilities.read(self._file_name, 
                                                                pixel_size_y_path)
+        elif pixel_size_y is not None:
+            self._metadata['pixel_size_y'] = pixel_size_y # TODO: is a multiplier needed here?
             
 
     def configure_angles(self, angles_path=None, angles=None, HDF5_units=None):
