@@ -239,18 +239,24 @@ class TescanDataReader(object):
         return roidict
     
     def load_darkfield(self):
-        di_path=glob.glob(os.path.join(self.tiff_directory_path,"di*"))[0]
-        di = np.asarray(Image.open(di_path)).astype(np.float32)
         roi = self.get_roi()
+        roi.pop('axis_0')
+        return TIFFStackReader(self.tiff_directory_path, proj_name='di', roi=roi).read()
+
+        # di_path=glob.glob(os.path.join(self.tiff_directory_path,"di*"))[0]
+        # di = np.asarray(Image.open(di_path)).astype(np.float32)
         
-        return di[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
+        # return di[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
         
     def load_flatfield(self):  
-        io_path=glob.glob(os.path.join(self.tiff_directory_path,"io*"))[0]
-        io = np.asarray(Image.open(io_path)).astype(np.float32)
         roi = self.get_roi()
+        roi.pop('axis_0')
+        return TIFFStackReader(self.tiff_directory_path, proj_name='io', roi=roi).read()
+
+        # io_path=glob.glob(os.path.join(self.tiff_directory_path,"io*"))[0]
+        # io = np.asarray(Image.open(io_path)).astype(np.float32)
        
-        return io[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
+        # return io[roi['axis_1'][0]:roi['axis_1'][1],roi['axis_2'][0]:roi['axis_2'][1]]
     
     def read(self):
         

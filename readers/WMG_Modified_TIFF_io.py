@@ -383,9 +383,9 @@ class TIFFStackReader(object):
         
         self._tiff_files.sort(key=self.__natural_keys)
         
-        print('The Number of images read in is: ' + str(len(self._tiff_files)))
-        print('The first file is: ' + str(self._tiff_files[0]))
-        print('The last file is: ' + str(self._tiff_files[-1]))
+        # print('The Number of images read in is: ' + str(len(self._tiff_files)))
+        # print('The first file is: ' + str(self._tiff_files[0]))
+        # print('The last file is: ' + str(self._tiff_files[-1]))
         
     def _get_file_type(self, img): 
         mode = img.mode
