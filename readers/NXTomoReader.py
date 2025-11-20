@@ -20,7 +20,9 @@
 # Gemma Fardell (UKRI-STFC)
 # Evelina Ametova (The University of Manchester)
 # Mike Sullivan (UKRI-STFC)
+# Sam Tygier (UKRI-STFC)
 
+import math
 import os
 import h5py
 from cil.framework import AcquisitionGeometry
@@ -112,18 +114,6 @@ class NXTomoReader(object):
         # self.image_key_dataset = self._look_for_tomo_data(IMAGE_KEY_PATH)
         # self.rotation_angles = self._get_tomo_data(self.angle_path)
 
-        # # print(f"{self.rotation_angles.attrs.keys()=}")
-
-        # if "units" not in self.rotation_angles.attrs.keys():
-        #     print("No unit information found for rotation angles. Will infer from array values.")
-        #     degrees = np.abs(self.rotation_angles).max() > 2 * np.pi
-        # else:
-        #     degrees = "deg" in str(self.rotation_angles.attrs["units"])
-
-        # if degrees:
-        #     self.rotation_angles = np.radians(self.rotation_angles)
-        #     assert isinstance(self.rotation_angles, np.ndarray)
-
         self.rotation_angles, angle_unit = self.get_rotation_angles()
 
         print(self.rotation_angles)
@@ -194,14 +184,12 @@ class NXTomoReader(object):
         try:
             with NexusFile(self.file_name, 'r') as file:
                 image_keys = self.get_image_keys()
-                projections = None
                 if dimensions is None:
                     projections = np.array(file[self.data_path])
                     result = projections[image_keys == image_key_id]
                     return result
                 else:
-                    # When dimensions are specified they need to be mapped to
-                    # image_keys
+                    # First dimension shifted to take into account image_key (e.g. projections may not start at zero)
                     index_array = np.where(image_keys == image_key_id)
                     projection_indexes = index_array[0][dimensions[0]]
                     new_dimensions = list(dimensions)
@@ -362,7 +350,20 @@ class NXTomoReader(object):
             dims[0] = np.sum(image_keys == 0)
             return tuple(dims)
 
-    def get_geometry(self):
+    def get_geometry(self, dimensions=None):
+        if dimensions is not None:
+            dim_h = (dimensions[2].stop - dimensions[2].start)
+            if dimensions[2].step is not None:
+                dim_h = math.ceil(dim_h / dimensions[2].step)
+            dim_v = (dimensions[1].stop - dimensions[1].start)
+            if dimensions[1].step is not None:
+                dim_v = math.ceil(dim_v / dimensions[1].step)
+            geometry = AcquisitionGeometry.create_Parallel3D().set_panel(
+                num_pixels=(dim_h, dim_v), pixel_size=(1.0, 1.0)).set_angles(
+                angles=self.get_projection_angles()[dimensions[0]]).set_labels(
+                ['angle', 'vertical', 'horizontal']).set_channels(1)
+            return geometry
+
         return self.geometry
 
     def read(self, dimensions=None):
@@ -373,7 +374,7 @@ class NXTomoReader(object):
         e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
         '''
         data = self.load_projection(dimensions)
-        geometry = self.get_geometry()
+        geometry = self.get_geometry(dimensions)
         out = geometry.allocate()
         out.fill(data)
         return out
@@ -538,7 +539,11 @@ if __name__ == "__main__":
 
     reader = NXTomoReader(file_name=file_path)
     acq_data = reader.read()
+    print(f"{acq_data.shape=}")
     flat = reader.load_dark_field()
     from cil.utilities.display import show2D
 
-    show2D(acq_data)
+    acq_data_sub = reader.read(dimensions=(slice(0,10), slice(0,135,1), slice(0,160,3)))
+    print(f"{acq_data_sub.shape=}")
+
+    show2D(acq_data_sub)
