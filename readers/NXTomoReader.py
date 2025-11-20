@@ -28,8 +28,6 @@ import h5py
 from cil.framework import AcquisitionGeometry
 import numpy as np
 
-from cil.io.utilities import HDF5_utilities
-
 h5pyAvailable = True
 try:
     from h5py import File as NexusFile
@@ -74,9 +72,6 @@ class NXTomoReader(object):
         self.dark = None
         self.angles = None
         self.geometry = None
-        self.key_path = 'entry1/tomo_entry/instrument/detector/image_key'
-        self.data_path = 'entry1/tomo_entry/data/data'
-        self.angle_path = 'entry1/tomo_entry/sample/rotation_angle'
 
         if not h5pyAvailable:
             raise Exception("Error: h5py is not installed")
@@ -87,12 +82,9 @@ class NXTomoReader(object):
         # check if file exists
         if not(os.path.isfile(self.file_name)):
             raise FileNotFoundError('File\n {}\n does not exist.'.format(self.file_name))
-        
 
         self.tomo_path = self._get_nxtomo_entry_path()
         assert self.tomo_path is not None, "No tomo_entry found in file."
-
-        print(self.tomo_path)
 
         self.data_path = f"{self.tomo_path}/{DATA_PATH}"
         self.key_path = f"{self.tomo_path}/{IMAGE_KEY_PATH}"
@@ -102,24 +94,9 @@ class NXTomoReader(object):
         self._check_tomo_data_exists(self.key_path)
         self._check_tomo_data_exists(self.angle_path)
 
-        print("data_path: ", self.data_path)
-        print("i key path:", self.key_path)
-        print("angle path: ",self.angle_path)
-
-        # check all these exist
-
-        # Then need to retrieve info for the geometry:
-
-        # self.data = self._look_for_tomo_data(DATA_PATH)
-        # self.image_key_dataset = self._look_for_tomo_data(IMAGE_KEY_PATH)
-        # self.rotation_angles = self._get_tomo_data(self.angle_path)
-
         self.rotation_angles, angle_unit = self.get_rotation_angles()
 
-        print(self.rotation_angles)
-        print(angle_unit)
-
-        dims = self._get_projection_dimensions()
+        self.full_dims = self._get_projection_dimensions()
 
         try:
             x_pixel_size = self._get_tomo_data_as_array(f"{self.tomo_path}/instrument/detector/x_pixel_size")
@@ -134,31 +111,11 @@ class NXTomoReader(object):
             y_pixel_size = 1
         
         geometry = AcquisitionGeometry.create_Parallel3D().set_panel(
-        num_pixels=(dims[2], dims[1]), pixel_size=(x_pixel_size, y_pixel_size)).set_angles(
+        num_pixels=(self.full_dims[2], self.full_dims[1]), pixel_size=(x_pixel_size, y_pixel_size)).set_angles(
         angles=self.get_projection_angles()).set_labels(
         ['angle', 'vertical', 'horizontal']).set_channels(1)
 
         self.geometry = geometry
-
-        # if self.roi is None:
-        #     self.roi= {'angle': -1, 'horizontal': -1, 'vertical': -1}
-
-        # # check labels
-        # for key in self.roi.keys():
-        #     if key not in ['angle', 'horizontal', 'vertical']:
-        #         raise ValueError("Wrong label. One of the following is expected: angle, horizontal, vertical")
-
-        # # Retrieve shape and geometry info from file
-
-
-        # # Store geometry
-
-    def read_slice(self):
-        # TODO:
-        # 
-        pass
-
-    # read takes parameter angles
 
     def get_image_keys(self):
         '''
@@ -323,8 +280,6 @@ class NXTomoReader(object):
         '''
         Return the sinogram dimensions of the dataset
         '''
-        if not h5pyAvailable:
-            raise Exception("Error: h5py is not installed")
         if self.file_name is None:
             return
         try:
@@ -385,76 +340,7 @@ class NXTomoReader(object):
         direction, from ymin to ymax, and returns
         an AcquisitionData object
         '''
-        if not h5pyAvailable:
-            raise Exception("Error: h5py is not installed")
-        if self.file_name is None:
-            return
-        try:
-
-            with NexusFile(self.file_name, 'r') as file:
-                try:
-                    dims = self.get_projection_dimensions()
-                except KeyError:
-                    pass
-                dims = file[self.data_path].shape
-                if ymin is None and ymax is None:
-
-                    try:
-                        image_keys = self.get_image_keys()
-                        projections = np.array(file[self.data_path])
-                        data = projections[image_keys == 0]
-                    except KeyError as ke:
-                        print(ke)
-                        data = np.array(file[self.data_path])
-
-                else:
-                    image_keys = self.get_image_keys()
-                    projections = np.array(file[self.data_path])[
-                        image_keys == 0]
-                    if ymin is None:
-                        ymin = 0
-                        if ymax > dims[1]:
-                            raise ValueError('ymax out of range')
-                        data = projections[:, :ymax, :]
-                    elif ymax is None:
-                        ymax = dims[1]
-                        if ymin < 0:
-                            raise ValueError('ymin out of range')
-                        data = projections[:, ymin:, :]
-                    else:
-                        if ymax > dims[1]:
-                            raise ValueError('ymax out of range')
-                        if ymin < 0:
-                            raise ValueError('ymin out of range')
-
-                        data = projections[:, ymin:ymax, :]
-
-        except Exception:
-            print("Error reading nexus file")
-            raise
-
-        try:
-            angles = self.get_projection_angles()
-        except KeyError:
-            n = data.shape[0]
-            angles = np.linspace(0, n, n+1, dtype=np.float32)
-
-        if ymax-ymin > 1:
-            geometry = AcquisitionGeometry.create_Parallel3D().set_panel(
-                num_pixels=(dims[2], ymax-ymin), pixel_size=(1, 1)).set_angles(
-                angles=angles).set_labels(
-                    ['angle', 'vertical', 'horizontal']).set_channels(1)
-            out = geometry.allocate()
-            out.fill(data)
-            return out
-        elif ymax-ymin == 1:
-            geometry = AcquisitionGeometry.create_Parallel2D().set_panel(
-                num_pixels=(dims[2]), pixel_size=(1, 1)).set_angles(
-                angles=angles).set_labels(
-                    ['angle', 'horizontal']).set_channels(1)
-            out = geometry.allocate()
-            out.fill(data.squeeze())
-            return out
+        return self.read(dimensions=(slice(0, self.full_dims[0]), slice(ymin, ymax), slice(0, self.full_dims[2])))
 
     def get_acquisition_data_slice(self, y_slice=0):
         ''' Returns a vertical slice of the projection data at y_slice,
@@ -479,59 +365,7 @@ class NXTomoReader(object):
         direction, from index bmin to bmax, and returns
         an AcquisitionData object
         '''
-        if not h5pyAvailable:
-            raise Exception("Error: h5py is not installed")
-        if self.file_name is None:
-            return
-        try:
-
-            with NexusFile(self.file_name, 'r') as file:
-                dims = self.get_projection_dimensions()
-                if bmin is None or bmax is None:
-                    raise ValueError(
-                        'get_acquisition_data_batch: please specify fastest \
-                        index batch limits')
-
-                if bmin >= 0 and bmin < bmax and bmax <= dims[0]:
-                    image_keys = np.array(file[self.key_path])
-                    projections = None
-                    projections = np.array(file[self.data_path])
-                    data = projections[image_keys == 0]
-                    data = data[bmin:bmax]
-                else:
-                    raise ValueError('get_acquisition_data_batch: bmin {0}>0 bmax {1}<{2}'.format(
-                        bmin, bmax, dims[0]))
-
-        except Exception:
-            print("Error reading nexus file")
-            raise
-
-        try:
-            angles = self.get_projection_angles()[bmin:bmax]
-        except KeyError:
-            n = data.shape[0]
-            angles = np.linspace(0, n, n+1, dtype=np.float32)[bmin:bmax]
-
-        if bmax-bmin >= 1:
-
-            geometry = AcquisitionGeometry('parallel', '3D',
-                                           angles=angles,
-                                           pixel_num_h=dims[2],
-                                           pixel_size_h=1,
-                                           pixel_num_v=dims[1],
-                                           pixel_size_v=1,
-                                           dist_source_center=None,
-                                           dist_center_detector=None,
-                                           channels=1,
-                                           dimension_labels=[
-                                               'angle', 'vertical',
-                                               'horizontal'])
-            out = geometry.allocate()
-            if bmax-bmin == 1:
-                out.fill(data.squeeze())
-            else:
-                out.fill(data)
-            return out
+        return self.read(dimensions=(slice(bmin, bmax), slice(0, self.full_dims[1]), slice(0, self.full_dims[2])))
 
 
 if __name__ == "__main__":
@@ -546,4 +380,10 @@ if __name__ == "__main__":
     acq_data_sub = reader.read(dimensions=(slice(0,10), slice(0,135,1), slice(0,160,3)))
     print(f"{acq_data_sub.shape=}")
 
-    show2D(acq_data_sub)
+    acq_data_sub_y = reader.get_acquisition_data_subset(50, 100)
+    print(f"{acq_data_sub_y.shape}")
+
+    acq_data_sub_angle = reader.get_acquisition_data_batch(50, 60)
+    print(f"{acq_data_sub_angle.shape}")
+
+    show2D(acq_data_sub_angle)
