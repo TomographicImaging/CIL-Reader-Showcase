@@ -24,12 +24,13 @@
 
 import math
 import os
-import h5py
 from cil.framework import AcquisitionGeometry
 import numpy as np
+from cil.io.utilities import HDF5_utilities
 
 h5pyAvailable = True
 try:
+    import h5py
     from h5py import File as NexusFile
 except ImportError:
     h5pyAvailable = False
@@ -47,39 +48,37 @@ class NXTomoReader(object):
     '''
     Reader class for loading Nexus files in the NXTomo format:
     https://manual.nexusformat.org/classes/applications/NXtomo.html
+
+    Parameters
+    ----------
+    file_name : str
+        Path to the Nexus file to be read.
     '''
     
-    def __init__(self, file_name=None, normalise = True):
+    def __init__(self, file_name=None):
+
+        self.setup(file_name=file_name)
+
+
+    def setup(self, file_name = None):
         '''
-        This takes in input as file_name and loads the dataset.
-        '''
-
-        self.setup(file_name=file_name,
-               normalise = normalise)
-
-
-    def setup(self,
-               file_name = None,
-               roi = None,
-               normalise = True,
-               mode = 'bin'): # CHECK INPUTS ARE VALID
-        
+        Parameters
+        ----------
+        file_name : str
+            Path to the Nexus file to be read.
+        '''        
         self.file_name = file_name
-        self.roi = roi
-        self.normalise = normalise
-        self.mode = mode
         self.flat = None
         self.dark = None
         self.angles = None
         self.geometry = None
 
         if not h5pyAvailable:
-            raise Exception("Error: h5py is not installed")
+            raise ImportError("Error: h5py is not installed")
         
         if self.file_name is None:
             raise ValueError('Path to NXTomo file is required.')
 
-        # check if file exists
         if not(os.path.isfile(self.file_name)):
             raise FileNotFoundError('File\n {}\n does not exist.'.format(self.file_name))
 
@@ -94,9 +93,9 @@ class NXTomoReader(object):
         self._check_tomo_data_exists(self.key_path)
         self._check_tomo_data_exists(self.angle_path)
 
-        self.rotation_angles, angle_unit = self.get_rotation_angles()
+        rotation_angles, angle_unit = self._get_rotation_angles_and_unit()
 
-        self.full_dims = self._get_projection_dimensions()
+        full_dims = self._get_projection_dimensions()
 
         try:
             x_pixel_size = self._get_tomo_data_as_array(f"{self.tomo_path}/instrument/detector/x_pixel_size")
@@ -111,8 +110,8 @@ class NXTomoReader(object):
             y_pixel_size = 1
         
         geometry = AcquisitionGeometry.create_Parallel3D().set_panel(
-        num_pixels=(self.full_dims[2], self.full_dims[1]), pixel_size=(x_pixel_size, y_pixel_size)).set_angles(
-        angles=self.get_projection_angles()).set_labels(
+        num_pixels=(full_dims[2], full_dims[1]), pixel_size=(x_pixel_size, y_pixel_size)).set_angles(
+        angles=rotation_angles, angle_unit=angle_unit).set_labels(
         ['angle', 'vertical', 'horizontal']).set_channels(1)
 
         self.geometry = geometry
@@ -133,10 +132,19 @@ class NXTomoReader(object):
     def load(self, dimensions=None, image_key_id=0):
         '''
         This is generic loading function of flat field, dark field and
-        projection data.
-        Loads data with image key id of image_key_id
-        dimensions: a tuple of 'slice'
-        e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+        projection data.       
+
+        Parameters
+        ----------
+        dimensions : tuple of slice, optional
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            The dimensions to load from the data. The default is None, which loads all data with the specified image key.
+        image_key_id : int, optional
+            The image key id to load. The default is 0, which corresponds to projection data.
+        
+        Returns
+        -------
+        numpy array with data corresponding to the specified image key and dimensions.
         '''
         try:
             with NexusFile(self.file_name, 'r') as file:
@@ -162,7 +170,10 @@ class NXTomoReader(object):
         """
         Look for a tomo_entry field in the NeXus file. Generate an error if it can't be
         found.
-        :return: The first tomo_entry group if one could be found, None otherwise.
+
+        Returns
+        -------
+        The first tomo_entry group if one could be found, None otherwise.
         """
         with NexusFile(self.file_name, "r") as self.nexus_file:
             for key in self.nexus_file.keys():
@@ -176,21 +187,35 @@ class NXTomoReader(object):
     def _get_tomo_data_as_array(self, entry_path: str) -> h5py.Group | h5py.Dataset | None:
         """
         Retrieve data from the tomo entry field.
-        :param entry_path: The path in which the data is found.
-        :return: The Nexus Group/Dataset if it exists, None otherwise.
+        Parameters
+        ----------
+        entry_path:
+            The path in which the data is found.
+        Returns
+        -------
+        The data as a numpy array.
         """
         with NexusFile(self.file_name, "r") as nexus_file:
             assert nexus_file[entry_path] is not None
             return nexus_file[entry_path][:].copy()
+        
 
-    def get_rotation_angles(self) -> np.ndarray:
+        
+    def _get_rotation_angles_and_unit(self):
+        '''
+        Returns
+        -------
+        A tuple containing:
+        - numpy array with rotation angles
+        - unit of the rotation angles (AngleUnit.DEGREE or AngleUnit.RADIAN)
+        '''
         from cil.framework.labels import AngleUnit
         with NexusFile(self.file_name, "r") as nexus_file:
 
             rotation_angles = nexus_file[self.angle_path]
 
             if "units" not in rotation_angles.attrs.keys():
-                print("No unit information found for rotation angles. Will infer from array values.")
+                # No unit information found for rotation angles. Will infer from array values
                 degrees = np.abs(rotation_angles).max() > 2 * np.pi            
             else:
                 degrees = "deg" in str(rotation_angles.attrs["units"])
@@ -200,14 +225,23 @@ class NXTomoReader(object):
             else:
                 units = AngleUnit.RADIAN
 
-            return rotation_angles[:].copy(), units
-           
+            image_keys = np.array(nexus_file[self.key_path])
+            rotation_angles = rotation_angles[image_keys == 0]
+
+            return rotation_angles.copy(), units
+               
         
     def _check_tomo_data_exists(self, entry_path: str) -> bool:
         """
         Check if data exists in the tomo entry field.
-        :param entry_path: The path in which the data is found.
-        :return: True if the data exists, False otherwise.
+        Parameters
+        ----------
+        enntry_path:
+            The path to the data
+        
+        Returns
+        -------
+        True if the data exists, False otherwise.
         """
         with NexusFile(self.file_name, "r") as nexus_file:
             if isinstance(nexus_file[entry_path], h5py.Dataset | h5py.Group):
@@ -215,12 +249,20 @@ class NXTomoReader(object):
             else:
                 raise KeyError(f"{entry_path} does not exist in {self.file_name}")
 
+
     def load_projection(self, dimensions=None):
         '''
         Loads the projection data from the nexus file.
-        dimensions: a tuple of 'slice's
-        e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
-        returns: numpy array with projection data
+
+        Parameters
+        ----------
+        dimensions : tuple of slice, optional
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            The dimensions to load from the data. The default is None, which loads all projection data.
+
+        Returns
+        -------
+        numpy array with projection data
         '''
         try:
             if 0 not in self.get_image_keys():
@@ -230,12 +272,19 @@ class NXTomoReader(object):
             raise KeyError(ke.args[0], self.data_path)
         return self.load(dimensions, 0)
 
-    def load_flat_field(self, dimensions=None): # TODO: convert to use CIL's ROI
+    def load_flat_field(self, dimensions=None):
         '''
         Loads the flat field data from the nexus file.
-        dimensions: a tuple of 'slice's
-        e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
-        returns: numpy array with flat field data
+
+        Parameters
+        ----------
+        dimensions : tuple of slice, optional
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            The dimensions to load from the data. The default is None, which loads all flat field data.
+
+        Returns
+        -------
+        numpy array with flat field data
         '''
         try:
             if 1 not in self.get_image_keys():
@@ -245,12 +294,19 @@ class NXTomoReader(object):
             raise KeyError(ke.args[0], self.data_path)
         return self.load(dimensions, 1)
 
-    def load_dark_field(self, dimensions=None): # TODO: convert to use CIL's ROI
+    def load_dark_field(self, dimensions=None):
         '''
-        Loads the Dark field data from the nexus file.
-        dimensions: a tuple of 'slice's
-        e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
-        returns: numpy array with dark field data
+        Loads the dark field data from the nexus file.
+
+        Parameters
+        ----------
+        dimensions : tuple of slice, optional
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            The dimensions to load from the data. The default is None, which loads all dark field data.
+
+        Returns
+        -------
+        numpy array with dark field data
         '''
         try:
             if 2 not in self.get_image_keys():
@@ -259,41 +315,7 @@ class NXTomoReader(object):
         except KeyError as ke:
             raise KeyError(ke.args[0], self.data_path)
         return self.load(dimensions, 2)
-
-    def get_projection_angles(self):
-        '''
-        Loads the projection angles from the nexus file.
-        returns: array containing the projection angles
-        '''
-        if self.file_name is None:
-            return
-        try:
-            with NexusFile(self.file_name, 'r') as file:
-                angles = np.array(file[self.angle_path], np.float32)
-                image_keys = np.array(file[self.key_path])
-                return angles[image_keys == 0]
-        except Exception:
-            print("get_projection_angles Error reading nexus file")
-            raise
-
-    def get_sinogram_dimensions(self):
-        '''
-        Return the sinogram dimensions of the dataset
-        '''
-        if self.file_name is None:
-            return
-        try:
-            with NexusFile(self.file_name, 'r') as file:
-                projections = file[self.data_path]
-                image_keys = np.array(file[self.key_path])
-                dims = list(projections.shape)
-                dims[0] = dims[1]
-                dims[1] = np.sum(image_keys == 0)
-                return tuple(dims)
-        except Exception:
-            print("Error reading nexus file")
-            raise
-
+    
     def _get_projection_dimensions(self):
         '''
         Return the projection dimensions of the dataset
@@ -306,6 +328,17 @@ class NXTomoReader(object):
             return tuple(dims)
 
     def get_geometry(self, dimensions=None):
+        '''
+        Parameters
+        ----------
+        dimensions : tuple of slice, optional
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            The dimensions to get the geometry for. The default is None, which returns the full geometry.
+
+        Returns
+        -------
+        AcquisitionGeometry object
+        '''
         if dimensions is not None:
             dim_h = (dimensions[2].stop - dimensions[2].start)
             if dimensions[2].step is not None:
@@ -313,9 +346,10 @@ class NXTomoReader(object):
             dim_v = (dimensions[1].stop - dimensions[1].start)
             if dimensions[1].step is not None:
                 dim_v = math.ceil(dim_v / dimensions[1].step)
+            angles, units = self._get_rotation_angles_and_unit()
             geometry = AcquisitionGeometry.create_Parallel3D().set_panel(
                 num_pixels=(dim_h, dim_v), pixel_size=(1.0, 1.0)).set_angles(
-                angles=self.get_projection_angles()[dimensions[0]]).set_labels(
+                angles=angles[dimensions[0]], angle_unit=units).set_labels(
                 ['angle', 'vertical', 'horizontal']).set_channels(1)
             return geometry
 
@@ -325,8 +359,15 @@ class NXTomoReader(object):
         '''
         Loads the acquisition data within the given dimensions and returns
         an AcquisitionData Object
+
+        Parameters
+        ----------
         dimensions: a tuple of 'slice'
-        e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+            e.g. (slice(0, 1), slice(0, 135), slice(0, 160))
+
+        Returns
+        -------
+        AcquisitionData
         '''
         data = self.load_projection(dimensions)
         geometry = self.get_geometry(dimensions)
@@ -334,56 +375,18 @@ class NXTomoReader(object):
         out.fill(data)
         return out
 
-    def get_acquisition_data_subset(self, ymin=None, ymax=None):
-        '''
-        This method load the acquisition data, cropped in the vertical
-        direction, from ymin to ymax, and returns
-        an AcquisitionData object
-        '''
-        return self.read(dimensions=(slice(0, self.full_dims[0]), slice(ymin, ymax), slice(0, self.full_dims[2])))
+    def print_metadata(self, group='/', depth=-1):
+        """
+        Prints the file metadata
 
-    def get_acquisition_data_slice(self, y_slice=0):
-        ''' Returns a vertical slice of the projection data at y_slice,
-         as an AcquisitionData object'''
-        return self.get_acquisition_data_subset(ymin=y_slice, ymax=y_slice+1)
+        Parameters
+        ----------
+        filename: str
+            The full path to the HDF5 file
+        group: (str), default: '/'
+            a specific group to print the metadata for, this defaults to the root group
+        depth: int, default -1
+            depth of group to output the metadata for, -1 is fully recursive
+        """
 
-    def list_file_content(self):
-        '''
-        Prints paths to all datasets within nexus file.
-        '''
-        try:
-            with NexusFile(self.file_name, 'r') as file:
-                file.visit(print)
-        except Exception:
-            print("Error reading nexus file")
-            raise
-
-    def get_acquisition_data_batch(self, bmin=None, bmax=None):
-        # TODO: Perhaps we should rename?
-        '''
-        This method load the acquisition data, cropped in the angular
-        direction, from index bmin to bmax, and returns
-        an AcquisitionData object
-        '''
-        return self.read(dimensions=(slice(bmin, bmax), slice(0, self.full_dims[1]), slice(0, self.full_dims[2])))
-
-
-if __name__ == "__main__":
-    file_path = 'data/24737_fd.nxs'
-
-    reader = NXTomoReader(file_name=file_path)
-    acq_data = reader.read()
-    print(f"{acq_data.shape=}")
-    flat = reader.load_dark_field()
-    from cil.utilities.display import show2D
-
-    acq_data_sub = reader.read(dimensions=(slice(0,10), slice(0,135,1), slice(0,160,3)))
-    print(f"{acq_data_sub.shape=}")
-
-    acq_data_sub_y = reader.get_acquisition_data_subset(50, 100)
-    print(f"{acq_data_sub_y.shape}")
-
-    acq_data_sub_angle = reader.get_acquisition_data_batch(50, 60)
-    print(f"{acq_data_sub_angle.shape}")
-
-    show2D(acq_data_sub_angle)
+        HDF5_utilities.print_metadata(self.file_name, group, depth)
