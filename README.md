@@ -37,6 +37,7 @@ Please also:
     Add a link to the publicly available dataset used near the top of the file(s)
     Add the CIL version you ran with near the top of the file(s)
     Mention in your PR if your reader requires any additional dependencies
+    Commit your rendered notebook
 
 When your contributions are ready, open a pull request for the CIL developer team to review! When you open the pull request please tick the box saying "Allow edits from maintainers".
 
