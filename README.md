@@ -9,6 +9,9 @@ The easiest way to install an environment to run the showcase is using our maint
 conda env create -f https://tomographicimaging.github.io/scripts/env/cil_demos.yml
 ```
 
+> [!NOTE]
+> Although many were developed with earlier versions of CIL, all notebooks have been tested with CIL v26.0.0
+
 ## Run the showcase locally
 
 - Activate your environment using: ``conda activate cil-demos``.
@@ -37,6 +40,7 @@ Please also:
     Add a link to the publicly available dataset used near the top of the file(s)
     Add the CIL version you ran with near the top of the file(s)
     Mention in your PR if your reader requires any additional dependencies
+    Commit your rendered notebook
 
 When your contributions are ready, open a pull request for the CIL developer team to review! When you open the pull request please tick the box saying "Allow edits from maintainers".
 
