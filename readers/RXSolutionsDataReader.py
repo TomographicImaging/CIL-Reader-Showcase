@@ -348,6 +348,25 @@ class RXSolutionsDataReader(object):
         source_position_set[:,1] -= Y
         detector_position_set[:,1] -= Y
 
+        # Retrieve the offsets from the XML file
+        dir_path = os.path.dirname(os.path.realpath(self.file_name))
+        XML_path = dir_path + "/" + "unireconstruction.xml"
+
+        offsetX = 0.0
+        offsetY = 0.0
+
+        if os.path.exists(XML_path):
+            # Open the XML file
+            tree = ElementTree.parse(XML_path)
+
+            # Find the conebeam correction
+            correction = tree.find("conebeam/correction")
+
+            # Get the offsetX
+            if correction is not None:
+                offsetX = int(correction.attrib["offsetX"])
+                offsetY = int(correction.attrib["offsetY"])
+
         # Axes transformation
         # X->Y
         # Y->Z
@@ -356,6 +375,10 @@ class RXSolutionsDataReader(object):
         detector_position_set = np.roll(detector_position_set, 1, axis=1)
         detector_direction_y_set = np.roll(detector_direction_y_set, 1, axis=1)
         detector_direction_x_set = np.roll(detector_direction_x_set, 1, axis=1)
+
+        # Apply the offsets
+        detector_position_set -=  detector_direction_x_set * offsetX * pixel_pitch_direction_x_in_mm
+        detector_position_set -=  detector_direction_y_set * offsetY * pixel_pitch_direction_y_in_mm
 
         # # Rotation matrix for 90 degrees around the z-axis (clockwise)
         # # cos(-90°) = 0, sin(-90°) = -1
