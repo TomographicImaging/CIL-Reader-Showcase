@@ -16,14 +16,15 @@
 # Franck Vidal (URKI-STFC)
 
 
-from cil.framework import AcquisitionGeometry #, AcquisitionData, ImageData, ImageGeometry, DataOrder
-from cil.io.TIFF import TIFFStackReader
-
 import numpy as np
-import os
+import os, sys
 from pathlib import Path
 from xml.etree import ElementTree
 from tifffile import imread
+
+from cil.framework import AcquisitionGeometry #, AcquisitionData, ImageData, ImageGeometry, DataOrder
+from cil.io.TIFF import TIFFStackReader
+
 
 class RXSolutionsDataReader(object):
 
@@ -241,12 +242,29 @@ class RXSolutionsDataReader(object):
         #     rotation_axis_position=[0, 0, 0],
         #     units='mm')
 
+        # Find the conebeam correction
+        correction = tree.find("conebeam/correction")
+
+        # Get the offsets
+        offsetX = 0.0
+        offsetY = 0.0
+
+        if correction is not None:
+            offsetX = float(correction.attrib["offsetX"])
+            offsetY = float(correction.attrib["offsetY"])
+
+            if offsetX > 1e-9 or offsetY > 1e-9:
+                print(f"offsetX ({offsetX}) and offsetY ({offsetY}) are not compatible with the reader in "
+                    "the orbital geometry mode. Offsets will be ignored. If the reconstruction is not correct, "
+                    "consider loading the CSV file instead of the XML file. This way the flexible geometry mode will "
+                    "be used.", file=sys.stderr)
+
         self._ag = AcquisitionGeometry.create_Cone3D(
             source_position=[0, -source_to_object, 0],
             rotation_axis_position=[0, 0, 0],
             detector_direction_x=[1, 0,  0],
             detector_direction_y=[0, 0, 1], # Not working => q.rotate([0, 0, 1])
-            detector_position=[0, object_to_detector, 0],
+            detector_position=[-offsetX * self.pixel_pitch_in_mm[0], object_to_detector, -offsetY * self.pixel_pitch_in_mm[1]],
             units='mm'
         )
         
@@ -362,10 +380,10 @@ class RXSolutionsDataReader(object):
             # Find the conebeam correction
             correction = tree.find("conebeam/correction")
 
-            # Get the offsetX
+            # Get the offsets
             if correction is not None:
-                offsetX = int(correction.attrib["offsetX"])
-                offsetY = int(correction.attrib["offsetY"])
+                offsetX = float(correction.attrib["offsetX"])
+                offsetY = float(correction.attrib["offsetY"])
 
         # Axes transformation
         # X->Y
